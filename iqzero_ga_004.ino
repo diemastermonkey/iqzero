@@ -13,7 +13,6 @@
 // #include <EEPROM.h>    // For storing top GA later?
 // V = EEPROM.read(Addr); EEPROM.write(Addr, V);
 
-
 // GA Structures - static properties
 int iGASeed = 31337;   // Base seed used for GA's program
 int iGALength = 3;     // How many instructions in GA's program
@@ -33,8 +32,8 @@ int SEED=31337, LENGTH=1, RANGE=32, SCORE=3;  // For easier array syntax
 
 // For entire sim - err, not sim, cause this is real :)
 int iZooIndex = 0;         // Which GA from zoo currently being tested
-int iZooTotal = 7;         // How many total in zoo i.e. population size
-int iTestCyclesMax = 128;   // How many 'program instruction runs' per sim run
+int iZooTotal = 8;         // How many total in zoo i.e. population size
+int iTestCyclesMax = 64;   // How many 'program instruction runs' per sim run
 int iTestCycles = 0;       // Current test cycle "charge" style reverse counter
 int iCommandTypes = 32;    // Total # of available commands
 
@@ -54,21 +53,21 @@ int iServoBonus = 0;              // Set to "TestCycleMax" each cycle, decrement
 int iRecurseArg = -1;             // Used only in recurse fnExecutes
 
 // Run-once setup
+// ---------------------------------------------------------------------------------
 void setup () {
   pinMode (A1, INPUT);           // Because hope to use in a sec
   pinMode (A2, INPUT); 
   pinMode (A3, INPUT);
   
   // Crudely init Zoo's GA's seeds, repeat while down helps randomize
-  for (int i=0; i < iZooTotal; i++) {
+  for (int i=0; i <= iZooTotal; i++) {
     // Inefective:
     randomSeed (analogRead(A1) + 8901 - micros());       
     iGA[i][SEED] = random(65536);
-    // NERFED // iGA[i][RANGE] = random(32);      
     iGA[i][RANGE] = 32;          
   }
   
-  /* Debug: Startup blind hardware demo */
+  /* Debug: Blind startup hardware demo */
   for (int i=0; i < 5; i++) {
     pinMode(i, OUTPUT);
     for (int s=0; s < 200; s += 20) {
@@ -85,11 +84,11 @@ void setup () {
 }
 
 /* Main
-// Run each GA's program for fixed x cycles, then fitness tests
-// Select winner, mutate, repeat. Thank you Darwin!
+   ---------------------------------------------------------------------------
+   Run each GA's program for fixed x cycles, then fitness tests
+   Select winner, mutate, repeat. Thank you Darwin!
 */
 void loop () {  
-
   // Discharge test cycles, or handle next testee, or bake off
   iTestCycles--;
   if (iTestCycles < 0) {
@@ -103,7 +102,7 @@ void loop () {
     if (iZooIndex >= iZooTotal) {
       int iHighIndex = fnSelectWinner();
       // Dupe winner to all slots - To do: store winner in eeprom   
-      for (int index=0; index < iZooTotal; index++) {   // Iterate all cages in zoo      
+      for (int index=0; index <= iZooTotal; index++) {   // Iterate all cages in zoo      
         for (int field=0; field < 4; field++) {
           iGA[index][field] = iGA[iHighIndex][field];
         }
@@ -135,15 +134,17 @@ void loop () {
   iGACmd = fnProcGenAdvance (1, iGARange);
   fnExecute (iGACmd);
   
-  // IMPORTANT: Accumulate any score now - can't happen between cycles
+  // Accumulate score
   iGAScore += fnScoreLive();
   
-  // Dispatch any servo work (retired?) 
-  // fnServoProcess ();
+  // fnServoProcess ();  // Dispatch any servo work (retired?) 
 }                                  // End (main) loop
 
-// Prep (arg index) GA from the zoo for a test run (and seed randgenerator)
-// Thus a whole zoo is simply an array of seeds, lengths and steps.
+/*  fnGAPrep
+   ---------------------------------------------------------------------------
+    Prep (arg index) GA from the zoo for a test run (and seed randgenerator)
+*/
+
 void fnGAPrep (int argIndex) {    
   iGASeed = iGA[argIndex][SEED];  // Superfluous
   iGALength = iGA[argIndex][LENGTH];
@@ -162,10 +163,12 @@ void fnGAPrep (int argIndex) {
   
 }
 
-// Return the xth random value from the generator.
-// With size 1 it's just a normal die. Any more is like
-// 'fast forwarding' the procgen, skipping steps in the
-// program. Also updates 'last' buffer.
+/* fnProcGenAdvance: Return the xth random value from the generator.
+   ---------------------------------------------------------------------------
+   With size 1 it's just a normal die. Any more is like
+   'fast forwarding' the procgen, skipping steps in the
+   program. Also updates 'last' buffer.
+*/
 int fnProcGenAdvance (int iArgStepSize, int iArgDieSides) {
   for (int i=0; i < iArgStepSize; i++) {
     iGALast = random (iArgDieSides); 
@@ -173,9 +176,11 @@ int fnProcGenAdvance (int iArgStepSize, int iArgDieSides) {
   return (iGALast); 
 }
 
-// fnScoreLive: In-cycle tests for accumulating score during test
-// returns a value to be *added* to the GA's score, thus supporting
-// penalties later. Use 0 for no bonus.
+/* fnScoreLive: In-cycle tests for accumulating score during test
+   ---------------------------------------------------------------------------
+   returns a value to be *added* to the GA's score, thus supporting
+   penalties later. Use 0 for no bonus.
+*/
 int fnScoreLive (void) {
   int iScore = 0;
   int iTemp = 0;
@@ -205,13 +210,13 @@ int fnScoreLive (void) {
   return (iScore);
 }
 
-/* fnSelectWinner
-   Returns index of the GA with highest current score
+/* fnSelectWinner: Returns index of the GA with highest current score
+   ---------------------------------------------------------------------------
 */
 int fnSelectWinner () {
   // Select highest score
   int iHighest, iWinner;
-  for (int i=0; i < iZooTotal; i++) {
+  for (int i=0; i <= iZooTotal; i++) {
     if (iGA[i][SCORE] > iHighest) {
       iHighest = iGA[i][SCORE];            // Tha new winna!
       iWinner = i;
@@ -221,9 +226,10 @@ int fnSelectWinner () {
 }    // End function
 
 /* fnMutate : Mutate GAs in all cages in zoo except 0th (winner)
+   ---------------------------------------------------------------------------
 */
 void fnMutate () {
-  for (int cage=1; cage < iZooTotal; cage++) {
+  for (int cage=1; cage <= iZooTotal; cage++) {
     // Re-seed to a real seed mandatory
     randomSeed (millis() + analogRead (A0)); 
     
@@ -240,9 +246,11 @@ void fnMutate () {
   }                                        // End for (copy mutants)  
 }
 
-// SmartWrite - Write arg data to (normalized) arg pin (of pins array) 
-// by the means expected by that pin. Squahes any arg pin index into 
-// a value appropriate for the array of known pins.
+/* fnSmartWrite : Write arg data to (normalized) arg pin (of pins array) 
+   ---------------------------------------------------------------------------
+   ...by the means expected by that pin. Squahes any arg pin index into 
+   a value appropriate for the array of known pins. 
+*/
 void fnSmartWrite (int iArgPinIndex, int iArgData) {
   // Normalize the pin argument to be from 0 to iPinsMax
   int iPinIndex = iArgPinIndex % iPinsTotal;
@@ -270,7 +278,9 @@ void fnSmartWrite (int iArgPinIndex, int iArgData) {
   }                                      // End if
 }                                        // End function
 
-// SmartRead - Just like SmartWrite but reads, returns result
+/*  fnSmartRead : Just like SmartWrite but reads, returns result
+   ---------------------------------------------------------------------------
+*/
 int fnSmartRead (int iArgPinIndex) {
   // Normalize the pin argument to fit within total pins
   int iPinIndex = abs (iArgPinIndex % iPinsTotal);
@@ -284,8 +294,9 @@ int fnSmartRead (int iArgPinIndex) {
   }  
 }
 
-// Init servo to go to destination i (60=0' 280=180
-// TO DO: Swap kludge* for 'fnServoProcess' nonblocking
+/*  fnServoTask : Send servo to a destination i (60=0' 280=180') (REINSTATE!)
+   ---------------------------------------------------------------------------
+*/
 void fnServoTask (int iArgPin, int i) {
   iServoCharge = i;                     // Charge counter and send high to servo
   iServoBonus--;                        // Charge GA's bonus for the servo activity
@@ -295,7 +306,9 @@ void fnServoTask (int iArgPin, int i) {
   digitalWrite (iArgPin, LOW);      // Removed to reinstate fnServoProcess?
 }
 
-// Process servo if necessary (nonblocking - disused, reinstsate!)
+/*  fnServoProcess : Process servo if necessary (nonblocking - disused, reinstsate!)
+   ---------------------------------------------------------------------------
+*/
 void fnServoProcess () {
   if (iServoCharge == -1) { 
     return; 
@@ -309,7 +322,9 @@ void fnServoProcess () {
   }
 }
 
-// Simple flasher for status...es. Takes fractional seconds!
+/*  fnFlash : Simple flasher w/fractional seconds
+   ---------------------------------------------------------------------------
+*/
 void fnFlash (int iTimes, float iDelaySeconds) {
   pinMode (iLedPin, OUTPUT);  
   int iDelay = 10000 * iDelaySeconds;
@@ -321,8 +336,8 @@ void fnFlash (int iTimes, float iDelaySeconds) {
   }
 }
 
-
 /* fnExecute : Execute a single (INT) instruction from the GA's DNA or elsewhere
+   ---------------------------------------------------------------------------    
    Really has to operate on globs cause it might change all kinds of stuff
    It's way down here because it gets tweaked ALOT and is a mess
    Important: Flattens int argCmd to iCommandTypes available commands
