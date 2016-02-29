@@ -14,7 +14,7 @@
 // V = EEPROM.read(Addr); EEPROM.write(Addr, V);
 
 // GA Structures - static properties
-int iGASeed = 684602;   // Base seed used for GA's program
+int iGASeed = 34602;   // Base seed used for GA's program
 int iGALength = 8;     // How many instructions in GA's program
 int iGARange = 32;    // How many sides on GA's dice (retire)
 int iGAScore = 0;      
@@ -32,9 +32,9 @@ int SEED=0, LENGTH=1, RANGE=2, SCORE=3;  // For easier array syntax
 
 // For entire sim - err, not sim, cause this is real :)
 int iZooIndex = 0;         // Which GA from zoo currently being tested
-int iZooTotal = 5;         // How many total in zoo i.e. population size
+int iZooTotal = 7;         // How many total in zoo i.e. population size
 int iTestCycles = 0;       // Current test cycle "charge" style reverse counter
-int iTestCyclesMax = 64;   // How many 'program instruction runs' per sim run
+int iTestCyclesMax = 128;   // How many 'program instruction runs' per sim run
 int iCommandTypes = 32;    // Total # avail commands LEAVE ROOM FOR defaults, nothing, etc
 
 // Pins available to the GA
@@ -62,9 +62,9 @@ void setup () {
   // Crudely init Zoo's GA's seeds, repeat while down helps randomize
   for (int i=0; i <= iZooTotal; i++) {
     // Inefective:
-    randomSeed (analogRead(A1) + 33258 + micros());       
+    randomSeed (analogRead(A1) + 1128 + micros());       
     iGA[i][SEED] = random(65536);
-    iGA[i][LENGTH] = 4 + random(16);  // DO NOT EXCEED iTestCyclesMax !!
+    iGA[i][LENGTH] = 8 + random(32);  // DO NOT EXCEED iTestCyclesMax !!
     iGA[i][RANGE] = 32;          
   }
   
@@ -430,13 +430,11 @@ void fnExecute (int iArgCmd) {
      
     // Execute contents of GAIn as an instruction
     // Recurses fnExecute, so we MUST clear GAIn first
-    /* Not safe??
     case 10:
       iRecurseArg = iGAIn;
       iGAIn = 0;                // Thus is also a 'clear ga in'
       fnExecute (iRecurseArg);
       break;
-    */
 
     /* ----------------------------------------------------
         Outputs
@@ -502,7 +500,9 @@ void fnExecute (int iArgCmd) {
       break;
       
     case 23: 
-      iGAIn = iGAIn % iGAStep; 
+      if (iGAStep > 0) {
+        iGAIn = iGAIn % iGAStep; 
+      }
       break;
       
     case 24: 
