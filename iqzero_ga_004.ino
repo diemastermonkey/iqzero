@@ -130,11 +130,11 @@ void loop () {
 
   // Handle current testee's "program step" (with wraparound)
   // No longer used as GA's can 'loop' themselves any time they 'like/luck'
-  iGAStep++;
-  if (iGAStep > iGALength) {    // Wraparound GA's program...
-    iGAStep = 0;
-    randomSeed (iGASeed);       // ...by reseeding
-  }
+//  iGAStep++;
+//  if (iGAStep > iGALength) {    // Wraparound GA's program...
+//    iGAStep = 0;
+//    randomSeed (iGASeed);       // ...by reseeding
+//  }
 
   // Get and execute this GA's next instruction from the PRNG
   iGACmd = fnProcGenAdvance (1, iCommandTypes);
