@@ -17,7 +17,7 @@
 // GA Structures - static properties
 int iGASeed = 31337;   // Base seed used for GA's program
 int iGALength = 3;     // How many instructions in GA's program
-int iGARange = 256;    // How many sides on GA's dice
+int iGARange = 32;    // How many sides on GA's dice
 int iGAScore = 0;      
 // Runtime properties (exist only while under test)
 int iGACmd = -1;        // Actual "program command" value
@@ -34,7 +34,7 @@ int SEED=31337, LENGTH=1, RANGE=32, SCORE=3;  // For easier array syntax
 // For entire sim - err, not sim, cause this is real :)
 int iZooIndex = 0;         // Which GA from zoo currently being tested
 int iZooTotal = 7;         // How many total in zoo i.e. population size
-int iTestCyclesMax = 32;   // How many 'program instruction runs' per sim run
+int iTestCyclesMax = 128;   // How many 'program instruction runs' per sim run
 int iTestCycles = 0;       // Current test cycle "charge" style reverse counter
 int iCommandTypes = 32;    // Total # of available commands
 
@@ -63,12 +63,9 @@ void setup () {
   for (int i=0; i < iZooTotal; i++) {
     // Inefective:
     randomSeed (analogRead(A1) + 8901 - micros());       
-    // OLD
     iGA[i][SEED] = random(65536);
-    iGA[i][RANGE] = random(32);      
-    // NEW
-    // oGA[i].iSeed = random(65536);
-    // oGA[i].iRange = random(256);      
+    // NERFED // iGA[i][RANGE] = random(32);      
+    iGA[i][RANGE] = 32;          
   }
   
   /* Debug: Startup blind hardware demo */
@@ -96,63 +93,34 @@ void loop () {
   // Discharge test cycles, or handle next testee, or bake off
   iTestCycles--;
   if (iTestCycles < 0) {
-    // Charge for next series of runs asap
-    iTestCycles = iTestCyclesMax;
-
     // This GA's run complete, update it's score, including bonus
-    // of any leftover servo budget it didn't use (shouldn't be negative but, maybe?)
-    // Note: NO BONUS if your score is less than the bonus!
-    /* retired?
-    if (iGAScore > iServoBonus) { 
-      iGAScore += iServoBonus;
-    }    
-    */
-    // OLD
     iGA[iZooIndex][SCORE] = iGAScore;
-    // NEW
-    // oGA[iZooIndex].iScore = iGAScore;
-    
     // Go to next in zoo
     iZooIndex++;
-    fnFlash (iZooIndex, 50);
+    // fnFlash (iZooIndex, 50);
 
-    // All zoo GAs tested: Select best performer
+    // If all GAs tested: Select and dupe best, mutate others
     if (iZooIndex >= iZooTotal) {
-      iZooIndex = 0;
-      // Select highest score
-      int iHighScore, iHighIndex;
-      for (int i=0; i < iZooTotal; i++) {
-// NEW        if (oGA[i].iScore > iHighScore) {
-// NEW          iHighScore = oGA[i].iScore;            // Tha new winna!
-// NEW          iHighIndex = i;
-// NEW        }
-      }  // End for 
-
+      int iHighIndex = fnSelectWinner();
       // Dupe winner to all slots - To do: store winner in eeprom   
       for (int index=0; index < iZooTotal; index++) {   // Iterate all cages in zoo      
-        // NEW
-        // oGA[index] = oGA[iHighIndex];                    // Better dupe all fields! o.^
-        // Or....?
-        // oGA[index].iSeed = oGA[iHighIndex].iSeed
-        // oGA[index].iRange = oGA[iHighIndex].iRange
-      
         for (int field=0; field < 4; field++) {
           iGA[index][field] = iGA[iHighIndex][field];
         }
       }
 
-      // Mutate all children except the winner (0th) (MOVED)
+      // Mutate all children except the winner (0th)
       fnMutate();
-
       // Reset for next cycle of tests
       iZooIndex = 0;      
-      // Indicate zoo cycle complete by flashing out winner's og index
+      iTestCycles = iTestCyclesMax;      
+      // Status: Blink-out og index of winner
       delay (100);
       fnFlash (iHighIndex + 1, 500);
       delay (100);                
     }                         // End 'if gt zoo total' all zoo iterated
 
-    // Prep the new zoo victim for test 
+    // Prep the new zoo victim for test (loads globals)
     fnGAPrep (iZooIndex);
   }                          // End 'if cycles < 1' (cycles exhausted)
 
@@ -168,10 +136,10 @@ void loop () {
   fnExecute (iGACmd);
   
   // IMPORTANT: Accumulate any score now - can't happen between cycles
-  // OLD
   iGAScore += fnScoreLive();
   
-  // Dispatch any servo work (retired?) // fnServoProcess ();
+  // Dispatch any servo work (retired?) 
+  // fnServoProcess ();
 }                                  // End (main) loop
 
 // Prep (arg index) GA from the zoo for a test run (and seed randgenerator)
@@ -179,11 +147,11 @@ void loop () {
 void fnGAPrep (int argIndex) {    
   iGASeed = iGA[argIndex][SEED];  // Superfluous
   iGALength = iGA[argIndex][LENGTH];
-  iGARange = iGA[argIndex][RANGE];
+  iGARange = 32;                 // RETIRED (remove soon)
   iGAScore = 0;                  // Note score is reset each run
-  iServoBonus = iTestCyclesMax;  // Recharge servo bonus
+  // iServoBonus = iTestCyclesMax;  // RETIRED Recharge servo bonus
   iGAStep = 0;                   // Ditto
-  // Init randgen with this GA's seed       
+  // Init prng with this GA's seed       
   randomSeed (iGASeed);           
   
   // Important: Start the GA with the same register values, taken
@@ -227,8 +195,7 @@ int fnScoreLive (void) {
   iTemp = digitalRead(iSensorPin);  
   if (iTemp == HIGH) { 
     iScore += 1;                       // Doubled to ensure it weighs more than servo bonus
-    // DEBUG
-    fnFlash (1, 3);
+    fnFlash (1, 1);
   }
   iSensorLast = iTemp;                // May be used by GA
 
@@ -238,6 +205,21 @@ int fnScoreLive (void) {
   return (iScore);
 }
 
+/* fnSelectWinner
+   Returns index of the GA with highest current score
+*/
+int fnSelectWinner () {
+  // Select highest score
+  int iHighest, iWinner;
+  for (int i=0; i < iZooTotal; i++) {
+    if (iGA[i][SCORE] > iHighest) {
+      iHighest = iGA[i][SCORE];            // Tha new winna!
+      iWinner = i;
+    }
+  }  // End for   
+  return (iWinner);
+}    // End function
+
 /* fnMutate : Mutate GAs in all cages in zoo except 0th (winner)
 */
 void fnMutate () {
@@ -245,14 +227,7 @@ void fnMutate () {
     // Re-seed to a real seed mandatory
     randomSeed (millis() + analogRead (A0)); 
     
-    // NEW: Change seed, range, or nothing
-    if (random(3) == 0) {
-      // NEW // oGA[cage].iSeed = random(oGA[cage].iRange);
-    } else {
-      // NEW // oGA[cage].iRange = random(65536);            // Get a fresh new range
-    }
-    
-    // OLD: Pick a field to randomize
+    // Pick a field to randomize
     int field = random(4);                // Beware hardwired range
     if (field != 0) {                    
       int iTemp = iGA[cage][field] + random(3) - 1;
@@ -354,146 +329,165 @@ void fnFlash (int iTimes, float iDelaySeconds) {
 */
 void fnExecute (int iArgCmd) {
   iArgCmd = iArgCmd % iCommandTypes;          // Note above
+  
   switch (iArgCmd) {
     
-    // Case 0 (+?) - Do Nothing         
-    case 0: 
-      // Set Out to random value    
+    /* ----------------------------------------------------
+        Program Flow Stuff    
+       ----------------------------------------------------                
+    */
+    case 0: break;              // Case zero do nothing
+
+    // Loop self by jumping to actual bottom
+    case 1:   
+      iGAStep = iGALength;      // Simply await wraparound
       break;
-    case 1: 
-      fnServoTask (iGAPin, iGAOut);          // (NEW: DEFAULT SERVO TASK FOR EMPTY INSTRUCTIONS!)
-      break;      
-      // Set 'pin' to value of in      
-    case 2: 
-      iGAPin = iGAIn; 
-      break;      
+  
+    // Jump to bottom (loop w/last cmd execute)
+    case 2:
+      iGAStep = iGALength - 1; // Last command actually runs if time
+      break;            
+
+    // Discard next instruction (Note: Still updates 'gaLast')
+    case 4: 
+      fnProcGenAdvance (1, iGARange);
+      break;
+  
+    // Skip "iGAOut" instructions
+    case 5:
+      fnProcGenAdvance (iGAOut, iCommandTypes);
+      break;
       
-    // Increment in
-    case 4:
-      iGAIn++;
-      break;
-    // Out to value of in
-    case 3: 
-      iGAOut = iGAIn; 
-      break;      
-
-    // Assignments of iGALast/iGAStep/ServoBonus etc
-    case 5: 
-      iGAIn = iGALast; 
-      break;
-    case 6: 
-      iGAIn = iServoBonus;     // Set in to the current servo budget bonus
-      break;
-    case 7: 
-      iGAPin = iGALast; 
-      break;
-      // Uses of its own step counter    
-    case 8: 
-      iGAIn = iGAStep; 
-      break;
-    case 9: 
-      iGAIn = iGAIn % iGAStep; 
-      break;
-    case 10: 
-      iGAOut = iGAStep; 
-      break;      
-    case 11:           // Increment out by current step
-      iGAOut += iGAStep; 
-      break;     
-
-    // Pin changess
-    case 12: 
-      iGAPin++; 
-      break;
-    case 13: 
-      iGAPin--; 
-      break;    
-    case 14: 
-      iGAPin = iGALast; 
-      break;
-    case 15: 
-      iGAOut++;        // Simple counter in GAOut
-      break;
-
-    // CONDITIONALS
+    // Read next instruction into GAIn, but don't execute it
+    case 6:
+     iGAIn = fnProcGenAdvance (1, iCommandTypes);
+     break;
+     
     // 'skip next cmd if In gt Out'
-    case 16:
+    case 7:
       if (iGAIn > iGAOut) { 
         fnProcGenAdvance (1, iGARange);  // discard next cmd
       }
       break;
   
     // 'skip next cmd if In lt Out' (opposite)
-    case 17:
+    case 8:
       if (iGAIn < iGAOut) { 
         fnProcGenAdvance (1, iGARange);  // discard next cmd
       }  
       break;
 
-    // Bonus "training wheels" easy servo task
-    // Will happen anyways w/SmartWrite to servopin, 
-    // but this doesn't require finding servopin
-    case 18:
-      fnServoTask (iServoPin, iGAOut); 
-      break;
-      
-    case 19:   // Add own score to output
-      iGAOut += iGAScore;
-      break;
-      
-    case 20:   // Return to top if no score (should be handy)
+    case 9:   // Return to top if no score (should be handy)
       if (iGAScore < 2) {
         iGAStep = iGALength;    // Simply await wraparound      
       }
-      break;
-        
-    //  Traditional inputs/outputs to/from pins
-    case 21:   // Simple 'out' to 'pin' (NEW: No longer allowed to blink Status LED)
-      if (iGAPin != iLedPin) {          // In this one case, iPins[3] is also value 3
-        fnSmartWrite (iGAPin, iGAOut);
-      }
-      break;
-
-    case 22:   // Simple in from pin
-      iGAIn += fnSmartRead (iGAPin);
-      break;
-      
-    case 23:   // Accumulator version of in from pin
-      iGAIn += fnSmartRead (iGAPin);
-      break;
-
-    // Skip (discard) one instruction
-    case 24: 
-      fnProcGenAdvance (1, iGARange);
-      break;
-  
-    // Skip "iGAOut" instructions
-    case 25:
-      fnProcGenAdvance (iGAOut, iGA[iZooIndex][RANGE]);
-      break;
-      
-    // Read next instruction into GAIn, but not executing it
-    case 26:
-     iGAIn = fnProcGenAdvance (1, iGA[iZooIndex][RANGE]);
-     break;
+      break;           
      
-    // Actually execute contents of GAIn as an instruction
-    // This recurses fnExecute, so we MUST clear GAIn first!
-    case 27:
+    // Execute contents of GAIn as an instruction
+    // Recurses fnExecute, so we MUST clear GAIn first
+    case 10:
       iRecurseArg = iGAIn;
       iGAIn = 0;                // Thus is also a 'clear ga in'
       fnExecute (iRecurseArg);
       break;
 
-    // Loop own program by jumping to actual bottom
-    case 30:   
-      iGAStep = iGALength;      // Simply await wraparound
+    /* ----------------------------------------------------
+        Outputs
+       ----------------------------------------------------                
+    */
+    
+    // No longer allowed to blink Status LED)    
+    case 11:   // Simple 'out' to 'pin'
+      if (iGAPin != iLedPin) {          // Disallow blinking LED
+        fnSmartWrite (iGAPin, iGAOut);
+      }
       break;
-  
-    // Jump to own last command, which executes before wrap
-    case 31:
-      iGAStep = iGALength - 1; // Last command actually runs if time
-      break;            
+      
+    // "Training wheels" servo outputs
+    case 12: 
+      fnServoTask (iGAPin, iGAOut);
+      break;      
+      
+    case 13:
+      fnServoTask (iServoPin, iGAOut); 
+      break;
+      
+    /* ----------------------------------------------------
+        Inputs
+       ----------------------------------------------------                
+    */
+    case 14:   // Simple in from pin
+      iGAIn = fnSmartRead (iGAPin);
+      break;
+      
+    case 15:   // Accumulator version of in from pin
+      iGAIn += fnSmartRead (iGAPin);
+      break;
+    
+    case 16: 
+      iGAPin = iGAIn; 
+      break;
+      
+    // Increment in
+    case 17:
+      iGAIn++;
+      break;
+      
+    // Out to value of in
+    case 18: 
+      iGAOut = iGAIn; 
+      break;      
+    
+    /* ----------------------------------------------------
+        Internal Operations
+       ----------------------------------------------------                
+    */
+    case 19:       // Assignments of iGALast/iGAStep/ServoBonus etc
+      iGAIn = iGALast; 
+      break;
+      
+    case 20: 
+      // Retired // iGAIn = iServoBonus;
+      break;
+      
+    case 21: 
+      iGAPin = iGALast; 
+      break;
+      // Uses of its own step counter    
+    case 22: 
+      iGAIn = iGAStep; 
+      break;
+    case 23: 
+      iGAIn = iGAIn % iGAStep; 
+      break;
+    case 24: 
+      iGAOut = iGAStep; 
+      break;      
+    case 25:           // Increment out by current step
+      iGAOut += iGAStep; 
+      break;     
+      
+    case 26:   // Add own score to output
+      iGAOut += iGAScore;
+      break;
+
+    /* ----------------------------------------------------
+        Pin Controls
+       ----------------------------------------------------        
+    */
+    case 27: 
+      iGAPin++; 
+      break;
+    case 28: 
+      iGAPin--; 
+      break;    
+    case 29: 
+      iGAPin = iGALast; 
+      break;
+    case 30: 
+      iGAOut++;        // Simple counter in GAOut
+      break;
+      
   }                            // End big ugly switch  
 }                              // End function
 
