@@ -19,6 +19,20 @@
    GA Structure
    ------------------------------------------------------------------------
 */
+// New: Not yet implemented
+typedef struct GA_Structure {
+  // Basic DNA
+  int iScore = 0;
+  unsigned long Seed = 0;
+  unsigned long Length = 0;
+  // Peeled-off top of its prng
+  long Charm = 0;
+  long Fave = 0;
+  long Curve = 0;  
+} GA[16];
+
+// GA_Structure GA[16];    // Builds, but doesn't run on device!
+
 unsigned long lScore[16];
 unsigned long lSeed[16];
 unsigned long lLength[16];
@@ -36,22 +50,7 @@ long lLimit = 0;
 long lOutPin = 0;
 long lInPin = 0;
 // Indexes (into fields) of three fields for cmds to operate on/with
-int iReadField, iWriteField, iOpIndex;
-// A global array of pointers to GA's own runtime fields for its fast access
-long int* lFields[] = {
-  &lCount,  // 0
-  &lFave,
-  &lCurve,
-  &lIn,
-  &lAdd,
-  &lOut,    // 5
-  &lHold,
-  &lCount,
-  &lLimit,
-  &lOutPin,  // 9
-  &lInPin
-};
-int iFieldCount = 11;
+int iReadField = 0, iWriteField = 0, iOpField = 0;
 
 /* ------------------------------------------------------------------------
    Globals
@@ -59,22 +58,22 @@ int iFieldCount = 11;
 */
 
 // Zoo parameters
-int iZooTotal = 3;              // How many GAs live in the zoo
+int iZooTotal = 3;               // How many GAs live in the zoo
 int iZooCurrent = 0;             // Index of GA currently under test
 
 // Lifetime/environment/runtime stuff
-long lRunTimeMS = 2000;          // GA lifetime in ms
+long lRunTimeMS =  2000;          // GA lifetime in ms
 long lLastTimeMS = 0;           // When (sys run time) current test ends
 long lNowTimeMS = 0;
-int iCommandTypes = 40;         // Total command types prng use, with 'defaults'
+int iCommandTypes = 64;         // Total command types prng use, with 'defaults'
 
 // Pins available to the GA
 int iPins[] = {0, 1, 2, 3, 4, A1, A2, A3};
 int iPinsTotal = 8;              // Fast access
 
 // System stuff (not known to GA)
-long lSalt = 31337;
-unsigned long lRandMax = 32768;   // Max size of a rand on target platform
+long lSalt = 1890;
+unsigned long lRandMax = 256;   // Max size of a rand on target platform
 unsigned long lRandLast = 0;      // Most recent value returned from prng
 int iSensorLast = 0;              // Most recent reading from sensor
 int iLedPin = 3;
@@ -101,6 +100,7 @@ void setup () {
   
   randomSeed (analogRead(A0) + lSalt);
   for (int i=0; i < iZooTotal; i++) {
+    lScore[i] = 0;    
     fnRandGA(i);
     fnSanityGA (i);
   }
@@ -108,6 +108,7 @@ void setup () {
   fnFlash (3, 100);  
   iZooCurrent = 0;  
   fnPrepFitness(iZooCurrent);
+  lLastTimeMS = millis();   // So we know when test over      
 }
 
 /* ------------------------------------------------------------------------
@@ -115,18 +116,17 @@ void setup () {
    ------------------------------------------------------------------------
 */
 void loop () {
-  // fnFlash (1, 0.10);
+  fnFlash (1, 0.05);
   
   // Execute the next cmd-appropriate value from the prng
   fnExecute (fnRandNext (1, iCommandTypes));   
   
-  // Handle GA 'lengths' - reset its prng/count if length reached
-  // It retains its other fields - this is its internal looper
-  // lCycleCount++;
-  // if (lCycleCount > lLength[iZooCurrent]) {
-  //  randomSeed (lSeed[iZooCurrent]);
-  //  lCycleCount = 0;
-  // }
+  // Handle GA's internal looping: Reset its prng/count if length reached
+  lCycleCount++;
+  if (lCycleCount > lLength[iZooCurrent]) {
+    fnPrepFitness(iZooCurrent);
+    lCycleCount = 0;
+  }
 
   // Accumulate score
   lScore[iZooCurrent] += fnScoreLive();
@@ -152,11 +152,12 @@ void loop () {
       iZooCurrent = 0;
     }
     
-    // Ready for next victim
+    // Ready the next victim
     fnPrepFitness(iZooCurrent);
+    lScore[iZooCurrent] = 0;
+    lLastTimeMS = millis();   // So we know when test over      
   }
-
-}
+}                            // End main loop
 
 /* ------------------------------------------------------------------------
    fnPrepFitness : Prepare GA and environment for a test run
@@ -165,25 +166,25 @@ void loop () {
 void fnPrepFitness (int iArgIndex) {
   // Plant GA's seed, reset score
   randomSeed (lSeed[iArgIndex]);
-  lScore[iArgIndex] = 0;
+  // Moved // lScore[iArgIndex] = 0;
   
-  // First few values peeled-off for runtime properties
+  // The first few values become its initial properties ("morphology"?)
   lCharm = random(lRandMax);
   lFave = random(lRandMax);
   lCurve = random(lRandMax) / lRandMax;  // A floating point result
+  lIn = random(lRandMax);
+  lOut = random(lRandMax);  
+  lHold = random(lRandMax);    
+  lCount = random(lRandMax);      
+  lLimit = random(lRandMax);        
   
   // Set initial outpin/inpins
   lOutPin = random(iPinsTotal);
   lInPin = random(iPinsTotal);  
   
-  // Set timers so we know when test over
-  lNowTimeMS = millis();
-  lLastTimeMS = millis();    
-  
   // Reset counter (for GA's info only)
   lCycleCount = 0;
 }
-
 
 /* ------------------------------------------------------------------------
    fnFitnessNext : Prep for a single fitness run of (arg) GA
@@ -197,14 +198,7 @@ int fnNextFitness () {
     return (-1);            // Inform caller, zoo completed
   }
   
-  // Use the GA's seed
-  // randomSeed (iGA[iZooCurrent][SEED]);
-
-  //
   //    INSERT OTHER PREP WORK HERE
-  //
-  
-  // lLastTimeMS = millis();
   return (iZooCurrent);    // Superfluous, but eases conversion later
 }
 
@@ -223,7 +217,6 @@ int fnSelectWinner () {
   }  // End for   
   return (iWinner);
 }    // End function
-
 
 
 /* ------------------------------------------------------------------------
@@ -247,25 +240,22 @@ int fnRandNext (int iArgSkip, long lArgRange) {
 */
 int fnScoreLive (void) {
   int iScore = 0;
-  int iTemp = 0;
 
   // Sensor test
   pinMode (iSensorPin, INPUT);  
   // Example for an LDR i.e. "analog value changed"
   // iTemp = int (analogRead (iSensorPin) / 10);    
   // For digital PIR that sends continuous HIGH while motion detect
-  iTemp = digitalRead(iSensorPin);  
-  if (iTemp == HIGH) { 
+  iSensorLast = digitalRead(iSensorPin);  
+  if (iSensorLast == HIGH) { 
     iScore += 1;                       // Doubled to ensure it weighs more than servo bonus
-    fnFlash (1, 0.20);
-  }
-  iSensorLast = iTemp;                // May be used by GA
-  
+    fnFlash (1, 0.05);
+  }  
 
   // if switch  pressed (*right now*), big points (to do, switch to hwint)
   pinMode (iContactPin, INPUT);          // Always needed as GA may change?
   if (digitalRead (iContactPin) == HIGH) {
-    iScore += 50;
+    iScore += 10;
   }
 
   //
@@ -318,7 +308,7 @@ void fnServoTask (int iArgPinIndex, int i) {
 */
 void fnRandGA (int iArgIndex) {
   lScore[iArgIndex] = 0;  
-  lSeed[iArgIndex] = random (lRandMax);
+  lSeed[iArgIndex] = random (lRandMax);    
   lLength[iArgIndex] = random (lRandMax);
 }
 
@@ -329,13 +319,7 @@ void fnRandGA (int iArgIndex) {
 void fnSanityGA (int iArgIndex) {
   if (lLength[iArgIndex] < 4) {
     lLength[iArgIndex] = 4;
-  }
-  
-  if (iReadField < 0) { iReadField = 0; }
-  if (iReadField > iFieldCount) { iReadField = iFieldCount; }  
-  if (iWriteField < 0) { iWriteField = 0; }
-  if (iWriteField > iFieldCount) { iWriteField = iFieldCount; }  
-  
+  }  
 }
 
 /* ------------------------------------------------------------------------
@@ -402,8 +386,12 @@ void fnMutateAll () {
     randomSeed (millis() + analogRead (A1)); 
     
     // Increment, decrement, or do nothing
-    lSeed[iCage] += random (3) - 1 ; 
     lLength[iCage] += random (3) - 1 ; 
+    
+    // Seed changes rare
+    if (random(3) == 0) {
+        lSeed[iCage] += random (3) - 1 ; 
+    }
         
     fnSanityGA(iCage);
   }              
@@ -415,117 +403,179 @@ void fnMutateAll () {
    Fields: 
      lCharm, lFave, lCurve, lIn, lAdd, lOut, lHold, lCount, 
      lLimit, lOutPin, lInPin
-
+     
    TO DO: Convert to a reference-array random pick 
    ------------------------------------------------------------------------
 */
 void fnExecute (int iArgCommand) {
   
   switch (iArgCommand) {
-    case 0:
-      fnSmartWrite (*lFields[9], *lFields[5]);    
+    // Old fashioned 'out value to out pin'
+    case 0:  
+      fnSmartWrite (lOutPin, lOut);    
       break;    
       
-    // Internal operations
-    case 1:
-      // lCount++;      
-      break;   
+    // Process flow (harder now, fewer options)
+    case 1:   // "Jump back" to top of instructions by re-initializing GA
+      fnPrepFitness(iZooCurrent);
+      break;      
       
-    case 2: 
-      lHold = lIn;
+    case 2:  // Loop to top only if...
+      if (lCycleCount > lLimit) {
+        fnPrepFitness(iZooCurrent);
+      }
+      break;      
+
+    case 3:  // Loop to top only if...
+      if (lCycleCount == lCharm) {
+        fnPrepFitness(iZooCurrent);
+      }
+      break;      
+      
+    // Curve operations      
+    case 8:  
+      lAdd = sin (lCount) * lCurve;
       break;
-      
-    case 3:
-      lHold += lIn;
-      break;
-      
-    case 4:
-      lHold += lCount;
-      break;
-      
-    case 5:
-      lHold = 0;
-      break;
-      
-    case 6:
-      lHold = lRandLast;
-      break;
-      
-    case 7:
-      lLimit++;
-      break;
-      
-    case 8:
-      lLimit--;
-      break;
-      
-    case 9:
-      lOut = lHold;
+
+    case 9: 
+      lAdd = cos (lCount) * lCurve;
       break;
       
     case 10:
+      lOut = sin (lCount) * lCurve;
+      break;
+
+    case 11:
+      lOut = sin (lCount) * lCurve;
+      break;
+      
+    // Conditional operations
+    case 16:
+      if (lLimit > lHold) {
+        lLimit = 0;
+      }
+      break;
+    
+    case 17:
+      if (lCount > lLimit) {
+        lCount = 0;
+      }
+      break;
+
+    case 18:
+      if (lCount > lLimit) {
+        fnSmartWrite (lOutPin, lOut);
+        lCount = 0;
+      }
+      break;
+
+    case 19:
+      if (lCount > lLimit) {
+        fnSmartWrite (lOutPin, lOut % 256);
+        lCount = 0;
+      }
+      break;
+
+    case 20:
+      if (lCount > lLimit) {
+        fnSmartWrite (lOutPin, lCurve * lOut % 256);
+        lCount = 0;
+      }
+      break;
+
+    case 21:
+      if (lCount > lLimit) {
+        fnSmartWrite (lOutPin, lCurve * lCount);
+        lCount = 0;
+      }
+      break;
+
+            
+    // Traditional hardwired operations           
+    case 25:
+      lHold += lIn;
+      break;
+      
+    case 26:
+      lHold += lCount;
+      break;
+      
+    case 27:
+      lHold = 0;
+      break;
+      
+    case 28:
+      lHold = lRandLast;
+      break;
+      
+    case 29:
+      lLimit++;
+      break;
+      
+    case 30:
+      lLimit--;
+      break;
+           
+    case 32:
       lOut += lHold;
       break;
       
-    case 11:
+    case 33:
       lAdd++;
       break;
       
-    case 12:
+    case 34:
       lAdd += lIn;
       break;
       
-    case 13:
+    case 35:
       lAdd--;
       break;    
       
-    case 14:
+    case 36:
       lLimit += lAdd;
       break;
       
-    case 15:
+    case 37:
       lLimit = lHold;
       break;
       
-    // Point pointing      
-    case 16:
+    // Pin pointing      
+    case 38:
       lInPin++;
       break;
       
-    case 17:
+    case 39:
       lInPin--;
       break;
     
-    case 18:
+    case 40:
       lOutPin++;
       break;
       
-    case 19:
+    case 41:
       lOutPin--;
       break;
       
-    case 20:
+    case 42:
       lInPin = lFave;
       break;
       
-    case 21:
+    case 43:
       lOutPin = lFave;
       break;
       
-    case 22:
+    case 44:
       lInPin = lHold;
       break;
       
-    case 32:
+    case 45:
       lOutPin = lHold;
       break;
 
     default:
-      // "Training wheels" servo-range write to output
-      // OG // fnSmartWrite (lOutPin, lOut % 200);
-      fnSmartWrite (*lFields[9], *lFields[5] % 200);          
-      // Something
-      break;
-      
+      // "Training wheels"
+      fnSmartWrite (lOutPin, 10 + lOut % 180);
+      break;      
   }
 }
