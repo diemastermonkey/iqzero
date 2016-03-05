@@ -58,22 +58,22 @@ int iReadField = 0, iWriteField = 0, iOpField = 0;
 */
 
 // Zoo parameters
-int iZooTotal = 3;               // How many GAs live in the zoo
+int iZooTotal = 6;               // How many GAs live in the zoo
 int iZooCurrent = 0;             // Index of GA currently under test
 
 // Lifetime/environment/runtime stuff
-long lRunTimeMS =  2000;          // GA lifetime in ms
+long lRunTimeMS =  7000;          // GA lifetime in ms
 long lLastTimeMS = 0;           // When (sys run time) current test ends
 long lNowTimeMS = 0;
-int iCommandTypes = 64;         // Total command types prng use, with 'defaults'
+int iCommandTypes = 48;         // Total command types prng use, with 'defaults'
 
 // Pins available to the GA
 int iPins[] = {0, 1, 2, 3, 4, A1, A2, A3};
 int iPinsTotal = 8;              // Fast access
 
 // System stuff (not known to GA)
-long lSalt = 1890;
-unsigned long lRandMax = 256;   // Max size of a rand on target platform
+long lSalt = 5487;
+unsigned long lRandMax = 512;   // Max size of a rand on target platform
 unsigned long lRandLast = 0;      // Most recent value returned from prng
 int iSensorLast = 0;              // Most recent reading from sensor
 int iLedPin = 3;
@@ -116,7 +116,7 @@ void setup () {
    ------------------------------------------------------------------------
 */
 void loop () {
-  fnFlash (1, 0.05);
+  // fnFlash (1, 0.05);
   
   // Execute the next cmd-appropriate value from the prng
   fnExecute (fnRandNext (1, iCommandTypes));   
@@ -133,7 +133,7 @@ void loop () {
   
   // Handle end of test cycle
   if (millis() - lLastTimeMS > lRunTimeMS) {
-    fnFlash (iZooCurrent + 1, 5);    
+    fnFlash (iZooCurrent + 1, 25);    
     if (fnNextFitness() == -1) {
       //
       // Zoo complete: Pick winner here
@@ -193,7 +193,7 @@ void fnPrepFitness (int iArgIndex) {
 */
 int fnNextFitness () {
   iZooCurrent++;
-  if (iZooCurrent >= iZooTotal) {
+  if (iZooCurrent > iZooTotal) {
     iZooCurrent = 0;
     return (-1);            // Inform caller, zoo completed
   }
@@ -249,13 +249,13 @@ int fnScoreLive (void) {
   iSensorLast = digitalRead(iSensorPin);  
   if (iSensorLast == HIGH) { 
     iScore += 1;                       // Doubled to ensure it weighs more than servo bonus
-    fnFlash (1, 0.05);
+    fnFlash (1, 0.25);
   }  
 
-  // if switch  pressed (*right now*), big points (to do, switch to hwint)
+  // PENALTY for letting the contact pin be pressed!
   pinMode (iContactPin, INPUT);          // Always needed as GA may change?
   if (digitalRead (iContactPin) == HIGH) {
-    iScore += 10;
+    iScore -= 1;
   }
 
   //
@@ -329,14 +329,14 @@ void fnSanityGA (int iArgIndex) {
 void fnHardwareTest () {
   for (int i=0; i < 5; i++) {
     pinMode(i, OUTPUT);
-    for (int s=0; s < 200; s += 20) {
+    for (int s=0; s < 280; s += 20) {
       digitalWrite (i, HIGH);
       delayMicroseconds (s);
       digitalWrite (i, LOW);
       delayMicroseconds (20000);
     }  
     digitalWrite (i, HIGH);
-    delayMicroseconds (60);
+    delayMicroseconds (90);
     digitalWrite (i, LOW);
     delayMicroseconds (20000);    
   }  
@@ -365,10 +365,10 @@ void fnSmartWrite (int iArgPinIndex, int iArgData) {
 
   // Else, treat as routine digital or analog
   if (iPinIndex < 5) {                    // First 4 in array are digital
-    if (iArgData < 128) {                 // Treat as low low, high high
+    if (iArgData % 2 == 0) {                 // Treat as low low, high high
       digitalWrite (iPin, LOW);
     } 
-    if (iArgData >= 128) {
+    if (iArgData % 2 != 0) {
       digitalWrite (iPin, HIGH);
     }
   } else {
@@ -389,9 +389,7 @@ void fnMutateAll () {
     lLength[iCage] += random (3) - 1 ; 
     
     // Seed changes rare
-    if (random(3) == 0) {
-        lSeed[iCage] += random (3) - 1 ; 
-    }
+    lSeed[iCage] += random (3) - 1 ; 
         
     fnSanityGA(iCage);
   }              
@@ -438,7 +436,7 @@ void fnExecute (int iArgCommand) {
       break;
 
     case 9: 
-      lAdd = cos (lCount) * lCurve;
+      lAdd = sin (lCurve) * lCount;
       break;
       
     case 10:
@@ -471,14 +469,14 @@ void fnExecute (int iArgCommand) {
 
     case 19:
       if (lCount > lLimit) {
-        fnSmartWrite (lOutPin, lOut % 256);
+        fnSmartWrite (lOutPin, lOut);
         lCount = 0;
       }
       break;
 
     case 20:
       if (lCount > lLimit) {
-        fnSmartWrite (lOutPin, lCurve * lOut % 256);
+        fnSmartWrite (lOutPin, lCurve * lOut);
         lCount = 0;
       }
       break;
@@ -575,7 +573,7 @@ void fnExecute (int iArgCommand) {
 
     default:
       // "Training wheels"
-      fnSmartWrite (lOutPin, 10 + lOut % 180);
+      fnSmartWrite (lOutPin, lOut);
       break;      
   }
 }
