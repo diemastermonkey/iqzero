@@ -3,7 +3,7 @@
  Procedurally-Generated Genetic Algorithm Autonomous Micro Robot
  For ATTiny85 and the Arduino environment
  Winner of the Adafruit/Hackaday Pi Zero Contest!
- 2016 @diemastermonkey (with special thanks to Charles "Chucky D" Darwin)   
+ 2016 @diemastermonkey (with special thanks to Charles Darwin)   
  ------------------------------------------------------------------------
  */
 
@@ -25,13 +25,13 @@
  Tuning
  ------------------------------------------------------------------------
  */
-int iZooTotal = 6;                // Total GAs in population
+int iZooTotal = 4;                // Total GAs in population
 long lRandMax = 256;              // Range of most rand outs
-unsigned long lRunTimeMS =  500;  // Lifetime of each GA in ms
+unsigned long lRunTimeMS =  1000;  // Lifetime of each GA in ms
 // Set bonus (or penalty!) for physical world events
-int iSensorBonus = +1;
-int iContactBonus = -5;          // Example penalty for triggering contact
-long iRootSeed = 61168;          // Initial PRNG starting point
+int iSensorBonus = +10;
+int iContactBonus = +1;          // Example penalty for triggering contact
+long iRootSeed = 51168;          // Initial PRNG starting point
 
 /* ------------------------------------------------------------------------
  GA Structure
@@ -98,9 +98,10 @@ void loop () {
     if (millis() - lLastTimeMS < lRunTimeMS) {
       pinMode (GA[i]->OutPin, OUTPUT); // Treat as servo
       digitalWrite (GA[i]->OutPin, HIGH);
-      delayMicroseconds (random(8192));
+      g = random(16336);
+      delayMicroseconds (g);
       digitalWrite (GA[i]->OutPin, LOW);      
-      delayMicroseconds (random(8192));
+      delayMicroseconds (g);
       // Scoring
       pinMode (iSensorPin, INPUT);    // Points for trigger PIR
       if (digitalRead (iSensorPin) == HIGH) {
@@ -124,7 +125,7 @@ void loop () {
   }
   
   // Clone winner, spawn mutant siblings
-  fnFlash (iHighScoreIndex, 6000);
+  fnFlash (iHighScoreIndex, 3000);
   fnClone (iHighScoreIndex);
   for (i=1; i < iZooTotal; i++) {    // Winner unchanged
     fnMutate(i);
