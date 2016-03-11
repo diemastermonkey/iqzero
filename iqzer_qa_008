@@ -25,13 +25,13 @@
  Tuning
  ------------------------------------------------------------------------
  */
-int iZooTotal = 4;                // Total GAs in population
+int iZooTotal = 6;                // Total GAs in population
 long lRandMax = 256;              // Range of most rand outs
-unsigned long lRunTimeMS =  1000;  // Lifetime of each GA in ms
+unsigned long lRunTimeMS =  3000;  // Lifetime of each GA in ms
 // Set bonus (or penalty!) for physical world events
-int iSensorBonus = +10;
-int iContactBonus = +1;          // Example penalty for triggering contact
-long iRootSeed = 51168;          // Initial PRNG starting point
+int iSensorBonus = +100;
+int iContactBonus = -20;          // Example penalty for triggering contact
+long iRootSeed = 41163;          // Initial PRNG starting point
 
 /* ------------------------------------------------------------------------
  GA Structure
@@ -103,11 +103,17 @@ void loop () {
       digitalWrite (GA[i]->OutPin, LOW);      
       delayMicroseconds (g);
       // Scoring
-      pinMode (iSensorPin, INPUT);    // Points for trigger PIR
+      pinMode (iSensorPin, INPUT);    // Bonus (or penalty): PIR
       if (digitalRead (iSensorPin) == HIGH) {
         GA[i]->Score += iSensorBonus;        
-      }
-      pinMode (iContactPin, INPUT);   // Penalty for trigger Contact
+        pinMode (iLedPin, OUTPUT);    // LED on for info
+        digitalWrite (iLedPin, HIGH);        
+      } else {
+        pinMode (iLedPin, OUTPUT);    // LED off for info
+        digitalWrite (iLedPin, LOW);                
+      }      
+      
+      pinMode (iContactPin, INPUT);   // Bonus (or penalty): Contact Switch
       if (digitalRead (iContactPin) == HIGH) {
         GA[i]->Score += iContactBonus;        
       }      
