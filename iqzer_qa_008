@@ -31,7 +31,7 @@
   Ground ----  Gnd  |ATTiny85| Pin 0 ----- Signal | Servo 1 
                     |        | Pin 1 ----- Signal | Passive Infrared Sensor
                     |        | Pin 2 ----- Signal | Servo 2 (or other)
-                    |        | Pin 2 ----- Pwr    | LED
+                    |        | Pin 3 ----- Pwr    | LED
   3.5v   ----  Pwr  |        | Pin 4 ----- Signal | Contact Switch
   
  ------------------------------------------------------------------------ 
