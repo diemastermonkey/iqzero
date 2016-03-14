@@ -3,13 +3,18 @@
  Procedurally-Generated Genetic Algorithm Autonomous Micro Robot
  For ATTiny85 and the Arduino environment
  Winner of the Adafruit/Hackaday Pi Zero Contest!
- 2016 @diemastermonkey (with special thanks to Charles Darwin)   
+ 2016 @diemastermonkey (with special thanks to Charles 'Chucky D' Darwin)   
  ------------------------------------------------------------------------
  */
 
 /* ------------------------------------------------------------------------
  Memo
- ------------------------------------------------------------------------
+ 
+ v 0.09  Greatly simplified, miniature fitness test in main loop
+         Operable as moving to a new faster model. Only one field enabled,
+         actions peeled directly off PRNG. You'd think it would do nothing, but
+         selection still manages to find productive combinations. 
+ 
  v 0.08  Finally a bit more wieldy GA structure. Greatly simplified 
  'internal logic', only a simple test cycle implemented.
  
@@ -19,19 +24,33 @@
  v 0.06  Completely refactored! Timer-based (not step-based) test cycle,
  fewer activities in mainline, fewer prng accesses, LESS flexibility for
  fields and mutations, but safer.
+ ------------------------------------------------------------------------
+ Serving Suggestion/Example Circuit
+                                                    Ground/power not shown
+                                                    
+  Ground ----  Gnd  |ATTiny85| Pin 0 ----- Signal | Servo 1 
+                    |        | Pin 1 ----- Signal | Passive Infrared Sensor
+                    |        | Pin 2 ----- Signal | Servo 2 (or other)
+                    |        | Pin 2 ----- Pwr    | LED
+  3.5v   ----  Pwr  |        | Pin 4 ----- Signal | Contact Switch
+  
+ ------------------------------------------------------------------------ 
  */
+ 
+ 
  
 /* ------------------------------------------------------------------------
  Tuning
  ------------------------------------------------------------------------
  */
-int iZooTotal = 6;                // Total GAs in population
-long lRandMax = 256;              // Range of most rand outs
-unsigned long lRunTimeMS =  3000;  // Lifetime of each GA in ms
+int iZooTotal = 4;                // Total GAs in population
+long lRandMax = 2048;              // Range of most rand outs
+unsigned long lRunTimeMS =  6000;  // Lifetime of each GA in ms
 // Set bonus (or penalty!) for physical world events
-int iSensorBonus = +100;
-int iContactBonus = -20;          // Example penalty for triggering contact
-long iRootSeed = 41163;          // Initial PRNG starting point
+int iServoCost = 1;               // Cost (from bonus) of writing to servo
+int iSensorReward = +10;
+int iContactReward = -40;          // Example penalty for triggering contact
+long iRootSeed = 6307;          // Initial PRNG starting point
 
 /* ------------------------------------------------------------------------
  GA Structure
@@ -57,6 +76,9 @@ GAStruct* GA[16];      // The zoo
  Globals
  ------------------------------------------------------------------------
  */
+// Pins available to the GA
+int iPins[] = {0, 1, 2, 3, 4, A1, A2, A3};
+int iPinsTotal = 8;              // Fast access
 int iLedPin = 3;
 int iSensorPin = 1;               // Currently a PIR (DIGITAL) sends high while motion
 int iSensorLast = 0;              // Most recent reading from sensor
@@ -65,8 +87,10 @@ int iServoPin = 0;                // For normalization only, GA must discover wh
 // Runtime
 unsigned long lLastTimeMS = 0;    // When (sys run time) current test ends
 unsigned long lNowTimeMS = 0;
+int iZooIndex = 0;                // Index of GA under test now
 int iHighScore = 0;
 int iHighScoreIndex = 0;
+int iPin = 0;
 int g; 
 int i;
 
@@ -75,13 +99,20 @@ int i;
  ------------------------------------------------------------------------
  */
 void setup () {
+  fnHardwareTest ();
   // First generation
   randomSeed (iRootSeed + analogRead (A3));
   for (i=0; i < iZooTotal; i++) {
+    fnFlash (1, 1000);        
     fnMutate(i);
     // GA[i]->Length = 32;    // Force reasonable length
     GA[i]->Score = 0;
   }
+
+  iZooIndex = 0;
+  iHighScore = 0;                      // Set for first run  
+  randomSeed(GA[iZooIndex]->Seed);  
+  lLastTimeMS = millis();  
 }
 
 /* ------------------------------------------------------------------------
@@ -89,67 +120,104 @@ void setup () {
  ------------------------------------------------------------------------
  */
 void loop () {
-  iHighScore = 0;                      // Reset for next run
-  randomSeed(GA[i]->Seed);  
-  lLastTimeMS = millis();
   
-  for (i=0; i < iZooTotal; i++) {
-    // Simple mini sim run
-    if (millis() - lLastTimeMS < lRunTimeMS) {
-      pinMode (GA[i]->OutPin, OUTPUT); // Treat as servo
-      digitalWrite (GA[i]->OutPin, HIGH);
-      g = random(16336);
-      delayMicroseconds (g);
-      digitalWrite (GA[i]->OutPin, LOW);      
-      delayMicroseconds (g);
-      // Scoring
-      pinMode (iSensorPin, INPUT);    // Bonus (or penalty): PIR
-      if (digitalRead (iSensorPin) == HIGH) {
-        GA[i]->Score += iSensorBonus;        
-        pinMode (iLedPin, OUTPUT);    // LED on for info
-        digitalWrite (iLedPin, HIGH);        
-      } else {
-        pinMode (iLedPin, OUTPUT);    // LED off for info
-        digitalWrite (iLedPin, LOW);                
-      }      
-      
-      pinMode (iContactPin, INPUT);   // Bonus (or penalty): Contact Switch
-      if (digitalRead (iContactPin) == HIGH) {
-        GA[i]->Score += iContactBonus;        
-      }      
-    } else {                          // End run, rank if highest so far
-      if (GA[i]->Score > iHighScore) {
-        iHighScore = GA[i]->Score;
-        iHighScoreIndex = i;
-      }
-      fnFlash (i, 20);
-      delay(5);    
-      iHighScore = 0;                // Reset for next run
-      randomSeed(GA[i]->Seed);      
-      lLastTimeMS = millis();
+  // Output
+  // iPin = abs(GA[iZooIndex]->OutPin) % iPinsTotal;    // Limit to range of pins            
+  iPin = random(lRandMax) % iPinsTotal;    // Limit to range of pins              
+  
+  // Treat digital pins as servo
+  if (iPin < 5) {
+    GA[iZooIndex]->Score -= iServoCost;    // Charge for servo action
+    g = random(lRandMax);    
+    pinMode (iPins[iPin], OUTPUT);                 
+    digitalWrite (iPins[iPin], HIGH);
+    delayMicroseconds (g);
+    digitalWrite (iPins[iPin], LOW);     
+    delayMicroseconds (g);    
+  } else {
+    // Analog pins
+    pinMode (iPins[iPin], OUTPUT);                 
+    analogWrite (iPins[iPin], GA[iZooIndex]->OutValue);
+  }
+  
+  // Scoring
+  pinMode (iSensorPin, INPUT);    // PIR reward or penalty
+  if (digitalRead (iSensorPin) == HIGH) {
+    GA[i]->Score += iSensorReward;        
+    pinMode (iLedPin, OUTPUT);    // LED on for info
+    digitalWrite (iLedPin, HIGH);        
+  } else {
+    pinMode (iLedPin, OUTPUT);    // LED off for info
+    digitalWrite (iLedPin, LOW);                
+  }      
+  
+  pinMode (iContactPin, INPUT);   // Contact switch reward or penalty
+  if (digitalRead (iContactPin) == HIGH) {
+    GA[iZooIndex]->Score += iContactReward;        
+  }      
+  
+  // This GA test run time up
+  if (millis() - lLastTimeMS > lRunTimeMS) {      
+    delay(3);              
+    fnFlash (iZooIndex + 1, 1000);    
+    delay(3);          
+    
+    // Rank if highest so far
+    if (GA[iZooIndex]->Score > iHighScore) {
+      iHighScore = GA[iZooIndex]->Score;
+      iHighScoreIndex = iZooIndex;
     }
-  }
-  
-  // Clone winner, spawn mutant siblings
-  fnFlash (iHighScoreIndex, 3000);
-  fnClone (iHighScoreIndex);
-  for (i=1; i < iZooTotal; i++) {    // Winner unchanged
-    fnMutate(i);
-  }
+
+    // Go to next GA
+    iZooIndex++;
+    // ...or handle generation    
+    if (iZooIndex > iZooTotal) {        
+      // Clone winner, spawn mutant siblings
+      fnFlash (iHighScoreIndex + 1, 5000);
+      fnClone (iHighScoreIndex);
+      for (i=1; i < iZooTotal; i++) {    // Winner unchanged
+        fnMutate(i);
+      }        
+      iZooIndex = 0;                    // Wraparound zoo
+      iHighScore = 0;                   // Reset high
+    } 
+    // Set for next testee
+    randomSeed(GA[iZooIndex]->Seed);      
+    lLastTimeMS = millis();
+  }  // End if time up
 }
 
 /* ------------------------------------------------------------------------
- fnMutate : Mutate (arg) GA (by index)
+ fnMutate : Mutate (arg) GA (by index) - Re-seeds PRNG
  ------------------------------------------------------------------------
  */
 void fnMutate (int iArgIndex) {
-  // Some may be completely random  
-  GA[iArgIndex]->Seed = random (lRandMax);  
-  GA[iArgIndex]->Length = random (lRandMax);  
-  GA[iArgIndex]->Limit = random (lRandMax);   
-  GA[iArgIndex]->OutPin = random (5);   
-  GA[iArgIndex]->InPin = random (5);    
-//  GA[iArgIndex]->Curve = random (lRandMax);      
+  randomSeed (iRootSeed + analogRead (A3));
+  // Smudges  
+  if (int(random(2)) == 0)   
+    GA[iArgIndex]->Seed += int(random(3)) - 1;    
+  if (int(random(2)) == 0)       
+    GA[iArgIndex]->Length += int(random(3)) - 1;
+  if (int(random(2)) == 0)       
+    GA[iArgIndex]->Limit += int(random(3)) - 1;
+  if (int(random(2)) == 0)     
+    GA[iArgIndex]->OutPin += int(random(3)) - 1;
+  if (int(random(2)) == 0)       
+    GA[iArgIndex]->InPin += int(random(3)) - 1;
+  
+  // Major changes, less common
+  if (int(random(10)) == 0) 
+    GA[iArgIndex]->Seed = random (lRandMax);  
+  if (int(random(10)) == 0) 
+    GA[iArgIndex]->Length = random (lRandMax);  
+  if (int(random(10)) == 0) 
+    GA[iArgIndex]->Limit = random (lRandMax);  
+  if (int(random(10)) == 0) 
+    GA[iArgIndex]->OutPin = random (lRandMax);  
+  if (int(random(10)) == 0) 
+    GA[iArgIndex]->InPin = random (lRandMax);  
+
+  // GA[iArgIndex]->Curve = random (lRandMax);        
 }
 
 /* ------------------------------------------------------------------------
@@ -186,4 +254,24 @@ void fnFlash (int iTimes, float iDelaySeconds) {
     digitalWrite (iLedPin, LOW);
     delayMicroseconds (iDelaySeconds);
   }
+}
+
+/* ------------------------------------------------------------------------
+   fnHardwareTest : Quick blind hardware test for startup etc
+   ------------------------------------------------------------------------
+*/
+void fnHardwareTest () {
+  for (int i=0; i < 5; i++) {
+    pinMode(i, OUTPUT);
+    for (int s=0; s < 280; s += 20) {
+      digitalWrite (i, HIGH);
+      delayMicroseconds (s);
+      digitalWrite (i, LOW);
+      delayMicroseconds (20000);
+    }  
+    digitalWrite (i, HIGH);
+    delayMicroseconds (90);
+    digitalWrite (i, LOW);
+    delayMicroseconds (20000);    
+  }  
 }
