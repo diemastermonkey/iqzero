@@ -43,14 +43,14 @@
  Tuning
  ------------------------------------------------------------------------
  */
-int iZooTotal = 4;                // Total GAs in population
+int iZooTotal = 5;                // Total GAs in population
 long lRandMax = 2048;              // Range of most rand outs
-unsigned long lRunTimeMS =  6000;  // Lifetime of each GA in ms
+unsigned long lRunTimeMS =  16000;  // Lifetime of each GA in ms
 // Set bonus (or penalty!) for physical world events
 int iServoCost = 1;               // Cost (from bonus) of writing to servo
-int iSensorReward = +10;
+int iSensorReward = +20;
 int iContactReward = -40;          // Example penalty for triggering contact
-long iRootSeed = 6307;          // Initial PRNG starting point
+long iRootSeed = 6301;          // Initial PRNG starting point
 
 /* ------------------------------------------------------------------------
  GA Structure
